@@ -8,8 +8,8 @@
 
 Adafruit_SSD1306 display = Adafruit_SSD1306(128, 64, &Wire);
 Encoder encoder(ENCODER_A, ENCODER_B);
-uint16_t dacVal = 2048;
-float voltage = dacVal * 5 / 4096;
+uint16_t dacVal = 512;
+float voltage = dacVal * 5 / 1023;
 bool encoderSWFlag = false;
 
 void encoderPressed() {
@@ -24,15 +24,15 @@ void encoderPressed() {
 void encoder2Val(long encoderChanges) {
   long changes = 0;
   if (encoderChanges > 0) {
-    changes = (encoderChanges > FAST_ROTATE_COUNT ? 20 : 1) * encoderChanges;
+    changes = (encoderChanges > FAST_ROTATE_COUNT ? 5 : 1) * encoderChanges;
 
-    dacVal = min(4096L, dacVal + changes);
+    dacVal = min(1023L, dacVal + changes);
   }
   else if (encoderChanges < 0) {
-    changes = (-encoderChanges > FAST_ROTATE_COUNT ? -20 : -1) * -encoderChanges;
+    changes = (-encoderChanges > FAST_ROTATE_COUNT ? -5 : -1) * -encoderChanges;
     dacVal = max(0L, dacVal + changes);
   }
-  voltage = (float)dacVal * 5UL / 4096UL;
+  voltage = (float)dacVal * 5UL / 1023UL;
   return;
 }
 
@@ -41,7 +41,7 @@ void setup() {
   pinMode(DAC_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ENCODER_SW, INPUT_PULLUP);
-  analogReadResolution(12);
+  analogWriteResolution(10);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3c)) {
     Serial.println("Failed to initialize OLED!");
