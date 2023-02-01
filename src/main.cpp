@@ -1,16 +1,23 @@
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_ADS1X15.h>
+#include <Adafruit_MCP4725.h>
 #include <Encoder.h>
 #include <Wire.h>
 
 #include "pinDef.h"
 
+#define DAC_RESOLUTION 4095    // 12-bits DAC resolution
+
 Adafruit_SSD1306 display = Adafruit_SSD1306(128, 64, &Wire);
+Adafruit_MCP4725 dac;
 Encoder encoder(ENCODER_A, ENCODER_B);
-uint16_t dacVal = 512;
-float voltage = dacVal * 5 / 1023;
+uint16_t dacVal = DAC_RESOLUTION / 2;     // write half the reference voltage on start
+const float refVoltage = 5.0;
+float voltage = refVoltage / 2;
 bool encoderSWFlag = false;
+char msgBuffer[64];
 
 void encoderPressed() {
   static unsigned long prevPressTime, pressTime = 0;
@@ -24,24 +31,28 @@ void encoderPressed() {
 void encoder2Val(long encoderChanges) {
   long changes = 0;
   if (encoderChanges > 0) {
-    changes = (encoderChanges > FAST_ROTATE_COUNT ? 5 : 1) * encoderChanges;
-
-    dacVal = min(1023L, dacVal + changes);
+    changes = (encoderChanges > FAST_ROTATE_COUNT ? FAST_ROTATE_AMOUNT : 10) * encoderChanges;
+    dacVal = min(DAC_RESOLUTION, dacVal + changes);
   }
   else if (encoderChanges < 0) {
-    changes = (-encoderChanges > FAST_ROTATE_COUNT ? -5 : -1) * -encoderChanges;
+    changes = (-encoderChanges > FAST_ROTATE_COUNT ? -FAST_ROTATE_AMOUNT : -10) * -encoderChanges;
     dacVal = max(0L, dacVal + changes);
   }
-  voltage = (float)dacVal * 5UL / 1023UL;
+  voltage = refVoltage * dacVal / DAC_RESOLUTION;
   return;
 }
 
+void print2Display(String msg) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print(msg);
+  display.display();
+}
+
 void setup() {
-  Serial.begin(9600);
-  pinMode(DAC_PIN, OUTPUT);
+  dac.begin(0x60); // 0x60 to 0x63
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ENCODER_SW, INPUT_PULLUP);
-  analogWriteResolution(10);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3c)) {
     Serial.println("Failed to initialize OLED!");
@@ -52,11 +63,8 @@ void setup() {
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.println("Current\ncontrol\nvoltage:");
-  display.print(voltage, 3);
-  display.println("V");
-  display.display();
-
+  sprintf(msgBuffer, "Current Voltage: \n%.2f V", voltage);
+  print2Display(msgBuffer);
 
   attachInterrupt(ENCODER_SW, encoderPressed, FALLING);
 }
@@ -66,13 +74,8 @@ void loop() {
 
   if (encoderSWFlag) {
     encoderSWFlag = false;
-    Serial.println("Change control voltage to:");
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("Set new\ncontrol\nvoltage:");
-    display.print(voltage, 3);
-    display.println("V");
-    display.display();
+    sprintf(msgBuffer, "Set new Voltage:\n%.2f V", voltage);
+    print2Display(msgBuffer);
 
     while (true) {
       if (encoderSWFlag) { encoderSWFlag = false; break; }
@@ -80,33 +83,14 @@ void loop() {
       if (newPos != encoderPos) {
         encoder2Val(newPos - encoderPos);
         encoderPos = newPos;
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.println("Set\ncontrol\nvoltage:");
-        display.print(voltage, 3);
-        display.println("V");
-        display.display();
-
-        Serial.print("Value: ");
-        Serial.println(dacVal);
-        Serial.print(voltage, 3);
-        Serial.println("V");
+        sprintf(msgBuffer, "Set new Voltage:\n%.2f V", voltage);
+        print2Display(msgBuffer);
+        dac.setVoltage(dacVal, false);
       }
       delay(100);
     }
 
-    analogWrite(DAC_PIN, dacVal);
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("Current\ncontrol\nvoltage:");
-    display.print(voltage, 3);
-    display.println("V");
-    display.display();
-
-    Serial.println("Current control voltage:");
-    Serial.print(voltage, 3);
-    Serial.println("V");
-    Serial.println("Current value:");
-    Serial.println(dacVal);
+    sprintf(msgBuffer, "Current Voltage:\n%.2f V", voltage);
+    print2Display(msgBuffer);
   }
 }
